@@ -75,15 +75,11 @@ function cleanupCache() {
       segmentCache.delete(url);
     }
 
-    console.log(
-      `Cache size limit reached. Removed ${toRemove.length} oldest entries. Current size: ${segmentCache.size}`,
-    );
+    console.log(`[cache] evicted ${toRemove.length} entries, size: ${segmentCache.size}`);
   }
 
   if (expiredCount > 0) {
-    console.log(
-      `Cleaned up ${expiredCount} expired cache entries. Current size: ${segmentCache.size}`,
-    );
+    console.log(`[cache] expired ${expiredCount} entries, size: ${segmentCache.size}`);
   }
 
   return segmentCache.size;
@@ -93,7 +89,7 @@ let cleanupInterval: any = null;
 function startCacheCleanupInterval() {
   if (!cleanupInterval) {
     cleanupInterval = setInterval(cleanupCache, 30 * 60 * 1000);
-    console.log("Started periodic cache cleanup interval");
+    console.log("[cache] cleanup interval started");
   }
 }
 
@@ -121,25 +117,14 @@ async function prefetchSegment(url: string, headers: HeadersInit) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
       ...(headers as HeadersInit),
     };
-    console.log("[prefetch] outgoing request:", {
-      method: "GET",
-      url,
-      headers: fetchHeaders,
-    });
-
     const response = await globalThis.fetch(url, {
       method: "GET",
       headers: fetchHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
-    console.log("[prefetch] response:", {
-      status: response.status,
-      statusText: response.statusText,
-    });
-
     if (!response.ok) {
-      console.error(`Failed to prefetch TS segment: ${response.status} ${response.statusText}`);
+      console.error(`[prefetch] FAIL ${response.status} ${url}`);
       return;
     }
 
@@ -155,10 +140,8 @@ async function prefetchSegment(url: string, headers: HeadersInit) {
       headers: responseHeaders,
       timestamp: Date.now(),
     });
-
-    console.log(`Prefetched and cached segment: ${url}`);
-  } catch (error) {
-    console.error(`Error prefetching segment ${url}:`, error);
+  } catch (error: any) {
+    console.error(`[prefetch] FAIL ${url}`, error.message);
   }
 }
 
@@ -202,7 +185,6 @@ async function proxyM3U8(event: any) {
   const headersParam = getQuery(event).headers as string;
 
   if (!url) {
-    console.error("M3U8 proxy 400: missing url");
     return sendError(
       event,
       createError({
@@ -228,7 +210,6 @@ async function proxyM3U8(event: any) {
   try {
     decryptedUrl = decryptUrl(url, secret);
   } catch {
-    console.error("M3U8 proxy 400: invalid encrypted url");
     return sendError(
       event,
       createError({
@@ -242,7 +223,6 @@ async function proxyM3U8(event: any) {
   try {
     headers = headersParam ? JSON.parse(headersParam) : {};
   } catch {
-    console.error("M3U8 proxy 400: invalid headers");
     return sendError(
       event,
       createError({
@@ -259,29 +239,14 @@ async function proxyM3U8(event: any) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
       ...(headers as HeadersInit),
     };
-    console.log("[m3u8-proxy] outgoing request:", {
-      method: "GET",
-      url: decryptedUrl,
-      headers: fetchHeaders,
-    });
+    console.log(`[m3u8-proxy] GET ${decryptedUrl}`);
 
     const response = await globalThis.fetch(decryptedUrl, {
       headers: fetchHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
-    console.log("[m3u8-proxy] response:", {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
-
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      console.error(
-        `Failed to fetch M3U8: ${response.status} ${response.statusText} for URL: ${decryptedUrl}`,
-      );
-      console.error(`Response body: ${errorText}`);
       throw new Error(`Failed to fetch M3U8: ${response.status} ${response.statusText}`);
     }
 
@@ -397,14 +362,14 @@ async function proxyM3U8(event: any) {
       }
 
       if (segmentUrls.length > 0 && !isCacheDisabled()) {
-        console.log(`Starting to prefetch ${segmentUrls.length} segments for ${decryptedUrl}`);
+        console.log(`[prefetch] ${segmentUrls.length} segments for ${decryptedUrl}`);
 
         cleanupCache();
 
         Promise.all(
           segmentUrls.map((segmentUrl) => prefetchSegment(segmentUrl, headers as HeadersInit)),
         ).catch((error) => {
-          console.error("Error prefetching segments:", error);
+          console.error("[prefetch] FAIL batch", (error as Error).message);
         });
       }
 
@@ -420,7 +385,7 @@ async function proxyM3U8(event: any) {
       return newLines.join("\n");
     }
   } catch (error: any) {
-    console.error("Error proxying M3U8:", error);
+    console.error(`[m3u8-proxy] FAIL ${decryptedUrl || url}`, error.message);
     return sendError(
       event,
       createError({

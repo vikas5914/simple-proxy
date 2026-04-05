@@ -48,11 +48,7 @@ export default defineEventHandler(async (event) => {
   const token = await createTokenIfNeeded(event);
 
   // Proxy the request
-  console.log("[proxy] outgoing request:", {
-    method: event.method,
-    url: destination,
-    headers: Object.fromEntries(getProxyHeaders(event.headers).entries()),
-  });
+  console.log(`[proxy] ${event.method} ${destination}`);
   try {
     await specificProxyRequest(event, destination, {
       blacklistedHeaders: getBlacklistedHeaders(),
@@ -68,7 +64,7 @@ export default defineEventHandler(async (event) => {
       },
     });
   } catch (e) {
-    console.log("Error fetching", e);
+    console.error(`[proxy] FAIL ${destination}`, e);
     throw e;
   }
 });

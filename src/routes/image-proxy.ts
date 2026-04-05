@@ -12,7 +12,6 @@ export default defineEventHandler(async (event) => {
   const headersParam = getQuery(event).headers as string;
 
   if (!url) {
-    console.error("Image proxy 400: missing url");
     return sendError(
       event,
       createError({
@@ -38,7 +37,6 @@ export default defineEventHandler(async (event) => {
   try {
     decryptedUrl = decryptUrl(url, secret);
   } catch {
-    console.error("Image proxy 400: invalid encrypted url");
     return sendError(
       event,
       createError({
@@ -52,7 +50,6 @@ export default defineEventHandler(async (event) => {
   try {
     headers = headersParam ? JSON.parse(headersParam) : {};
   } catch {
-    console.error("Image proxy 400: invalid headers");
     return sendError(
       event,
       createError({
@@ -78,22 +75,12 @@ export default defineEventHandler(async (event) => {
       Referer: defaultReferer,
       ...(headers as HeadersInit),
     };
-    console.log("[image-proxy] outgoing request:", {
-      method: "GET",
-      url: decryptedUrl,
-      headers: fetchHeaders,
-    });
+    console.log(`[image-proxy] GET ${decryptedUrl}`);
 
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
       headers: fetchHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    console.log("[image-proxy] response:", {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
     });
 
     if (!response.ok) {
@@ -112,7 +99,7 @@ export default defineEventHandler(async (event) => {
 
     return sendStream(event, response.body as ReadableStream);
   } catch (error: any) {
-    console.error("Error proxying image:", error);
+    console.error(`[image-proxy] FAIL ${decryptedUrl || url}`, error.message);
     return sendError(
       event,
       createError({

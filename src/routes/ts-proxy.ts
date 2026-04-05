@@ -25,7 +25,6 @@ export default defineEventHandler(async (event) => {
   const headersParam = getQuery(event).headers as string;
 
   if (!url) {
-    console.error("TS proxy 400: missing url");
     return sendError(
       event,
       createError({
@@ -51,7 +50,6 @@ export default defineEventHandler(async (event) => {
   try {
     decryptedUrl = decryptUrl(url, secret);
   } catch {
-    console.error("TS proxy 400: invalid encrypted url");
     return sendError(
       event,
       createError({
@@ -65,7 +63,6 @@ export default defineEventHandler(async (event) => {
   try {
     headers = headersParam ? JSON.parse(headersParam) : {};
   } catch {
-    console.error("TS proxy 400: invalid headers");
     return sendError(
       event,
       createError({
@@ -98,21 +95,12 @@ export default defineEventHandler(async (event) => {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
       ...(headers as HeadersInit),
     };
-    console.log("[ts-proxy] outgoing request:", {
-      method: "GET",
-      url: decryptedUrl,
-      headers: fetchHeaders,
-    });
+    console.log(`[ts-proxy] GET ${decryptedUrl}`);
 
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
       headers: fetchHeaders,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    console.log("[ts-proxy] response:", {
-      status: response.status,
-      statusText: response.statusText,
     });
 
     if (!response.ok) {
@@ -132,7 +120,7 @@ export default defineEventHandler(async (event) => {
     }
     return sendStream(event, response.body);
   } catch (error: any) {
-    console.error("Error proxying TS file:", error);
+    console.error(`[ts-proxy] FAIL ${decryptedUrl || url}`, error.message);
     return sendError(
       event,
       createError({
