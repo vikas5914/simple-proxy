@@ -1,29 +1,26 @@
-import { CompactEncrypt, compactDecrypt } from "jose";
+import crypto from "crypto";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+let cachedKey: Buffer;
+let cachedIv: Buffer;
+let cachedKeySource: string;
 
-let cachedSecret: Uint8Array | null = null;
-let cachedKeySource: string | undefined;
-
-export async function getSecret(encryptionKey: string): Promise<Uint8Array> {
-  if (cachedSecret && cachedKeySource === encryptionKey) {
-    return cachedSecret;
+export function getSecret(encryptionKey: string): Buffer {
+  if (cachedKey && cachedKeySource === encryptionKey) {
+    return cachedKey;
   }
-  cachedSecret = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", encoder.encode(encryptionKey)),
-  );
+
+  cachedKey = crypto.createHash("sha256").update(encryptionKey).digest();
+  cachedIv = crypto.createHash("sha256").update(cachedKey).digest().subarray(0, 16);
   cachedKeySource = encryptionKey;
-  return cachedSecret;
+  return cachedKey;
 }
 
-export async function encryptUrl(url: string, secret: Uint8Array): Promise<string> {
-  return new CompactEncrypt(encoder.encode(url))
-    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
-    .encrypt(secret);
+export function encryptUrl(url: string, secret: Buffer): string {
+  const cipher = crypto.createCipheriv("aes-256-cbc", secret, cachedIv);
+  return Buffer.concat([cipher.update(url, "utf8"), cipher.final()]).toString("base64url");
 }
 
-export async function decryptUrl(token: string, secret: Uint8Array): Promise<string> {
-  const { plaintext } = await compactDecrypt(token, secret);
-  return decoder.decode(plaintext);
+export function decryptUrl(token: string, secret: Buffer): string {
+  const decipher = crypto.createDecipheriv("aes-256-cbc", secret, cachedIv);
+  return decipher.update(token, "base64url", "utf8") + decipher.final("utf8");
 }

@@ -32,11 +32,11 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  const secret = await getSecret(encryptionKey);
+  const secret = getSecret(encryptionKey);
 
   let decryptedUrl = "";
   try {
-    decryptedUrl = await decryptUrl(url, secret);
+    decryptedUrl = decryptUrl(url, secret);
   } catch {
     console.error("Image proxy 400: invalid encrypted url");
     return sendError(

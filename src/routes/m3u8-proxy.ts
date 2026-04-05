@@ -222,11 +222,11 @@ async function proxyM3U8(event: any) {
     );
   }
 
-  const secret = await getSecret(encryptionKey);
+  const secret = getSecret(encryptionKey);
 
   let decryptedUrl = "";
   try {
-    decryptedUrl = await decryptUrl(url, secret);
+    decryptedUrl = decryptUrl(url, secret);
   } catch {
     console.error("M3U8 proxy 400: invalid encrypted url");
     return sendError(
@@ -304,7 +304,7 @@ async function proxyM3U8(event: any) {
             const regex = /https?:\/\/[^""\s]+/g;
             const keyUrl = regex.exec(line)?.[0];
             if (keyUrl) {
-              const encryptedKeyUrl = encodeURIComponent(await encryptUrl(keyUrl, secret));
+              const encryptedKeyUrl = encodeURIComponent(encryptUrl(keyUrl, secret));
               const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(keyUrl, proxyKeyUrl));
             } else {
@@ -315,7 +315,7 @@ async function proxyM3U8(event: any) {
             const regex = /https?:\/\/[^""\s]+/g;
             const mediaUrl = regex.exec(line)?.[0];
             if (mediaUrl) {
-              const encryptedMediaUrl = encodeURIComponent(await encryptUrl(mediaUrl, secret));
+              const encryptedMediaUrl = encodeURIComponent(encryptUrl(mediaUrl, secret));
               const proxyMediaUrl = `${baseProxyUrl}/m3u8-proxy?url=${encryptedMediaUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(mediaUrl, proxyMediaUrl));
             } else {
@@ -328,7 +328,7 @@ async function proxyM3U8(event: any) {
           // This is a quality variant URL
           const variantUrl = parseURL(line, decryptedUrl);
           if (variantUrl) {
-            const encryptedVariantUrl = encodeURIComponent(await encryptUrl(variantUrl, secret));
+            const encryptedVariantUrl = encodeURIComponent(encryptUrl(variantUrl, secret));
             newLines.push(
               `${baseProxyUrl}/m3u8-proxy?url=${encryptedVariantUrl}&headers=${encodedHeaders}`,
             );
@@ -364,7 +364,7 @@ async function proxyM3U8(event: any) {
             const regex = /https?:\/\/[^""\s]+/g;
             const keyUrl = regex.exec(line)?.[0];
             if (keyUrl) {
-              const encryptedKeyUrl = encodeURIComponent(await encryptUrl(keyUrl, secret));
+              const encryptedKeyUrl = encodeURIComponent(encryptUrl(keyUrl, secret));
               const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(keyUrl, proxyKeyUrl));
 
@@ -384,7 +384,7 @@ async function proxyM3U8(event: any) {
           if (segmentUrl) {
             segmentUrls.push(segmentUrl);
 
-            const encryptedSegmentUrl = encodeURIComponent(await encryptUrl(segmentUrl, secret));
+            const encryptedSegmentUrl = encodeURIComponent(encryptUrl(segmentUrl, secret));
             newLines.push(
               `${baseProxyUrl}/ts-proxy?url=${encryptedSegmentUrl}&headers=${encodedHeaders}`,
             );

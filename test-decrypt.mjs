@@ -1,20 +1,10 @@
-import { compactDecrypt } from "jose";
+import crypto from "crypto";
 
-const value = process.argv[2];
+const key = crypto.createHash("sha256").update(process.env.URL_ENCRYPTION_KEY).digest();
+const iv = crypto.createHash("sha256").update(key).digest().subarray(0, 16);
 
-if (!process.env.URL_ENCRYPTION_KEY) {
-  throw new Error("URL_ENCRYPTION_KEY is required");
-}
+const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+const decrypted = decipher.update(process.argv[2], "base64url", "utf8") + decipher.final("utf8");
 
-if (!value) {
-  throw new Error("Value argument is required");
-}
-
-const secret = new Uint8Array(
-  await crypto.subtle.digest("SHA-256", new TextEncoder().encode(process.env.URL_ENCRYPTION_KEY)),
-);
-
-const decrypted = new TextDecoder().decode((await compactDecrypt(value, secret)).plaintext);
-
-console.log(`input: ${value}`);
+console.log(`input: ${process.argv[2]}`);
 console.log(`decrypted: ${decrypted}`);
