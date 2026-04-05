@@ -1,0 +1,9 @@
+services:
+  simple-proxy:
+    build: .
+    container_name: simple-proxy
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      ENABLE_CACHE: "true"
