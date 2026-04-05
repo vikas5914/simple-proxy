@@ -32,8 +32,11 @@ jobs:
       - name: Prepare for linting
         run: pnpm prepare
 
-      - name: Run ESLint
+      - name: Run Oxlint
         run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
 
   building:
     name: Build project
