@@ -6,4 +6,4 @@ services:
     ports:
       - "3000:3000"
     environment:
-      ENABLE_CACHE: "true"
+      URL_ENCRYPTION_KEY: ${URL_ENCRYPTION_KEY}

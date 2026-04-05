@@ -3,7 +3,7 @@
   "version": "2.2.4",
   "private": true,
   "scripts": {
-    "prepare": "nitropack prepare",
+    "prepare": "husky",
     "dev": "nitropack dev",
     "build": "nitropack build",
     "build:cloudflare": "NITRO_PRESET=cloudflare pnpm run build",
@@ -24,8 +24,15 @@
   },
   "devDependencies": {
     "@rollup/wasm-node": "^4.60.1",
+    "@types/node": "^25.5.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.58.0"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm run lint",
+    "*": "oxfmt --no-error-on-unmatched-pattern"
   },
   "pnpm": {
     "overrides": {

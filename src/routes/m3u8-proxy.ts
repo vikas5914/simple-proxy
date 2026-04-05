@@ -1,7 +1,9 @@
 import { setResponseHeaders } from "h3";
+import { decryptUrl, encryptUrl, getSecret } from "../utils/encryption";
 
 // Check if caching is enabled via environment variable (disabled by default)
 const isCacheDisabled = () => process.env.ENABLE_CACHE !== "true";
+const encryptionKey = process.env.URL_ENCRYPTION_KEY;
 
 function parseURL(req_url: string, baseUrl?: string) {
   if (baseUrl) {
@@ -9,7 +11,7 @@ function parseURL(req_url: string, baseUrl?: string) {
   }
 
   const match = req_url.match(
-    /^(?:(https?:)?\/\/)?(([^\/?]+?)(?::(\d{0,5})(?=[\/?]|$))?)([\/?][\S\s]*|$)/i,
+    /^(?:(https?:)?\/\/)?(([^/?]+?)(?::(\d{0,5})(?=[/?]|$))?)([/?][\S\s]*|$)/i,
   );
 
   if (!match) {
@@ -36,7 +38,7 @@ function parseURL(req_url: string, baseUrl?: string) {
       return null;
     }
     return parsed.href;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -186,6 +188,7 @@ async function proxyM3U8(event: any) {
   const headersParam = getQuery(event).headers as string;
 
   if (!url) {
+    console.error("M3U8 proxy 400: missing url");
     return sendError(
       event,
       createError({
@@ -195,10 +198,37 @@ async function proxyM3U8(event: any) {
     );
   }
 
+  if (!encryptionKey) {
+    return sendError(
+      event,
+      createError({
+        statusCode: 500,
+        statusMessage: "URL encryption key is required",
+      }),
+    );
+  }
+
+  const secret = await getSecret(encryptionKey);
+
+  let decryptedUrl = "";
+  try {
+    decryptedUrl = await decryptUrl(url, secret);
+  } catch {
+    console.error("M3U8 proxy 400: invalid encrypted url");
+    return sendError(
+      event,
+      createError({
+        statusCode: 400,
+        statusMessage: "Invalid URL format",
+      }),
+    );
+  }
+
   let headers = {};
   try {
     headers = headersParam ? JSON.parse(headersParam) : {};
-  } catch (e) {
+  } catch {
+    console.error("M3U8 proxy 400: invalid headers");
     return sendError(
       event,
       createError({
@@ -209,7 +239,8 @@ async function proxyM3U8(event: any) {
   }
 
   try {
-    const response = await globalThis.fetch(url, {
+    const encodedHeaders = encodeURIComponent(JSON.stringify(headers));
+    const response = await globalThis.fetch(decryptedUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
@@ -220,7 +251,7 @@ async function proxyM3U8(event: any) {
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
       console.error(
-        `Failed to fetch M3U8: ${response.status} ${response.statusText} for URL: ${url}`,
+        `Failed to fetch M3U8: ${response.status} ${response.statusText} for URL: ${decryptedUrl}`,
       );
       console.error(`Response body: ${errorText}`);
       throw new Error(`Failed to fetch M3U8: ${response.status} ${response.statusText}`);
@@ -242,20 +273,22 @@ async function proxyM3U8(event: any) {
         if (line.startsWith("#")) {
           if (line.startsWith("#EXT-X-KEY:")) {
             // Proxy the key URL
-            const regex = /https?:\/\/[^\""\s]+/g;
+            const regex = /https?:\/\/[^""\s]+/g;
             const keyUrl = regex.exec(line)?.[0];
             if (keyUrl) {
-              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encodeURIComponent(keyUrl)}&headers=${encodeURIComponent(JSON.stringify(headers))}`;
+              const encryptedKeyUrl = encodeURIComponent(await encryptUrl(keyUrl, secret));
+              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(keyUrl, proxyKeyUrl));
             } else {
               newLines.push(line);
             }
           } else if (line.startsWith("#EXT-X-MEDIA:")) {
             // Proxy alternative media URLs (like audio streams)
-            const regex = /https?:\/\/[^\""\s]+/g;
+            const regex = /https?:\/\/[^""\s]+/g;
             const mediaUrl = regex.exec(line)?.[0];
             if (mediaUrl) {
-              const proxyMediaUrl = `${baseProxyUrl}/m3u8-proxy?url=${encodeURIComponent(mediaUrl)}&headers=${encodeURIComponent(JSON.stringify(headers))}`;
+              const encryptedMediaUrl = encodeURIComponent(await encryptUrl(mediaUrl, secret));
+              const proxyMediaUrl = `${baseProxyUrl}/m3u8-proxy?url=${encryptedMediaUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(mediaUrl, proxyMediaUrl));
             } else {
               newLines.push(line);
@@ -265,16 +298,16 @@ async function proxyM3U8(event: any) {
           }
         } else if (line.trim()) {
           // This is a quality variant URL
-          const variantUrl = parseURL(line, url);
+          const variantUrl = parseURL(line, decryptedUrl);
           if (variantUrl) {
+            const encryptedVariantUrl = encodeURIComponent(await encryptUrl(variantUrl, secret));
             newLines.push(
-              `${baseProxyUrl}/m3u8-proxy?url=${encodeURIComponent(variantUrl)}&headers=${encodeURIComponent(JSON.stringify(headers))}`,
+              `${baseProxyUrl}/m3u8-proxy?url=${encryptedVariantUrl}&headers=${encodedHeaders}`,
             );
           } else {
             newLines.push(line);
           }
         } else {
-          // Empty line, preserve it
           newLines.push(line);
         }
       }
@@ -300,10 +333,11 @@ async function proxyM3U8(event: any) {
         if (line.startsWith("#")) {
           if (line.startsWith("#EXT-X-KEY:")) {
             // Proxy the key URL
-            const regex = /https?:\/\/[^\""\s]+/g;
+            const regex = /https?:\/\/[^""\s]+/g;
             const keyUrl = regex.exec(line)?.[0];
             if (keyUrl) {
-              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encodeURIComponent(keyUrl)}&headers=${encodeURIComponent(JSON.stringify(headers))}`;
+              const encryptedKeyUrl = encodeURIComponent(await encryptUrl(keyUrl, secret));
+              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
               newLines.push(line.replace(keyUrl, proxyKeyUrl));
 
               // Only prefetch if cache is enabled
@@ -318,37 +352,32 @@ async function proxyM3U8(event: any) {
           }
         } else if (line.trim() && !line.startsWith("#")) {
           // This is a segment URL (.ts file)
-          const segmentUrl = parseURL(line, url);
+          const segmentUrl = parseURL(line, decryptedUrl);
           if (segmentUrl) {
             segmentUrls.push(segmentUrl);
 
+            const encryptedSegmentUrl = encodeURIComponent(await encryptUrl(segmentUrl, secret));
             newLines.push(
-              `${baseProxyUrl}/ts-proxy?url=${encodeURIComponent(segmentUrl)}&headers=${encodeURIComponent(JSON.stringify(headers))}`,
+              `${baseProxyUrl}/ts-proxy?url=${encryptedSegmentUrl}&headers=${encodedHeaders}`,
             );
           } else {
             newLines.push(line);
           }
         } else {
-          // Comment or empty line, preserve it
           newLines.push(line);
         }
       }
 
-      if (segmentUrls.length > 0) {
-        console.log(`Starting to prefetch ${segmentUrls.length} segments for ${url}`);
+      if (segmentUrls.length > 0 && !isCacheDisabled()) {
+        console.log(`Starting to prefetch ${segmentUrls.length} segments for ${decryptedUrl}`);
 
-        // Only perform cache operations if cache is enabled
-        if (!isCacheDisabled()) {
-          cleanupCache();
+        cleanupCache();
 
-          Promise.all(
-            segmentUrls.map((segmentUrl) => prefetchSegment(segmentUrl, headers as HeadersInit)),
-          ).catch((error) => {
-            console.error("Error prefetching segments:", error);
-          });
-        } else {
-          console.log("Cache disabled - skipping prefetch operations");
-        }
+        Promise.all(
+          segmentUrls.map((segmentUrl) => prefetchSegment(segmentUrl, headers as HeadersInit)),
+        ).catch((error) => {
+          console.error("Error prefetching segments:", error);
+        });
       }
 
       // Set appropriate headers

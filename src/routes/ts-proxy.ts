@@ -1,8 +1,10 @@
 import { setResponseHeaders } from "h3";
+import { decryptUrl, getSecret } from "../utils/encryption";
 import { getCachedSegment } from "./m3u8-proxy";
 
 // Check if caching is enabled via environment variable (disabled by default)
 const isCacheDisabled = () => process.env.ENABLE_CACHE !== "true";
+const encryptionKey = process.env.URL_ENCRYPTION_KEY;
 
 export default defineEventHandler(async (event) => {
   // Handle CORS preflight requests
@@ -22,6 +24,7 @@ export default defineEventHandler(async (event) => {
   const headersParam = getQuery(event).headers as string;
 
   if (!url) {
+    console.error("TS proxy 400: missing url");
     return sendError(
       event,
       createError({
@@ -31,10 +34,37 @@ export default defineEventHandler(async (event) => {
     );
   }
 
+  if (!encryptionKey) {
+    return sendError(
+      event,
+      createError({
+        statusCode: 500,
+        statusMessage: "URL encryption key is required",
+      }),
+    );
+  }
+
+  const secret = await getSecret(encryptionKey);
+
+  let decryptedUrl = "";
+  try {
+    decryptedUrl = await decryptUrl(url, secret);
+  } catch {
+    console.error("TS proxy 400: invalid encrypted url");
+    return sendError(
+      event,
+      createError({
+        statusCode: 400,
+        statusMessage: "Invalid URL format",
+      }),
+    );
+  }
+
   let headers = {};
   try {
     headers = headersParam ? JSON.parse(headersParam) : {};
-  } catch (e) {
+  } catch {
+    console.error("TS proxy 400: invalid headers");
     return sendError(
       event,
       createError({
@@ -47,7 +77,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Only check cache if caching is enabled
     if (!isCacheDisabled()) {
-      const cachedSegment = getCachedSegment(url);
+      const cachedSegment = getCachedSegment(decryptedUrl);
 
       if (cachedSegment) {
         setResponseHeaders(event, {
@@ -62,7 +92,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const response = await globalThis.fetch(url, {
+    const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
       headers: {
         // Default User-Agent (from src/utils/headers.ts)
