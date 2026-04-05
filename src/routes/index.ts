@@ -48,6 +48,11 @@ export default defineEventHandler(async (event) => {
   const token = await createTokenIfNeeded(event);
 
   // Proxy the request
+  console.log("[proxy] outgoing request:", {
+    method: event.method,
+    url: destination,
+    headers: Object.fromEntries(getProxyHeaders(event.headers).entries()),
+  });
   try {
     await specificProxyRequest(event, destination, {
       blacklistedHeaders: getBlacklistedHeaders(),

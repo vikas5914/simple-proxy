@@ -115,13 +115,25 @@ async function prefetchSegment(url: string, headers: HeadersInit) {
   }
 
   try {
+    const fetchHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
+      ...(headers as HeadersInit),
+    };
+    console.log("[prefetch] outgoing request:", {
+      method: "GET",
+      url,
+      headers: fetchHeaders,
+    });
+
     const response = await globalThis.fetch(url, {
       method: "GET",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-        ...(headers as HeadersInit),
-      },
+      headers: fetchHeaders,
+    });
+
+    console.log("[prefetch] response:", {
+      status: response.status,
+      statusText: response.statusText,
     });
 
     if (!response.ok) {
@@ -240,12 +252,25 @@ async function proxyM3U8(event: any) {
 
   try {
     const encodedHeaders = encodeURIComponent(JSON.stringify(headers));
+    const fetchHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
+      ...(headers as HeadersInit),
+    };
+    console.log("[m3u8-proxy] outgoing request:", {
+      method: "GET",
+      url: decryptedUrl,
+      headers: fetchHeaders,
+    });
+
     const response = await globalThis.fetch(decryptedUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-        ...(headers as HeadersInit),
-      },
+      headers: fetchHeaders,
+    });
+
+    console.log("[m3u8-proxy] response:", {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
     });
 
     if (!response.ok) {

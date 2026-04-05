@@ -92,14 +92,25 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    const fetchHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
+      ...(headers as HeadersInit),
+    };
+    console.log("[ts-proxy] outgoing request:", {
+      method: "GET",
+      url: decryptedUrl,
+      headers: fetchHeaders,
+    });
+
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
-      headers: {
-        // Default User-Agent (from src/utils/headers.ts)
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-        ...(headers as HeadersInit),
-      },
+      headers: fetchHeaders,
+    });
+
+    console.log("[ts-proxy] response:", {
+      status: response.status,
+      statusText: response.statusText,
     });
 
     if (!response.ok) {

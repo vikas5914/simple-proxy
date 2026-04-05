@@ -62,13 +62,36 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    // Build Referer from the image URL's origin if not provided
+    const imageUrl = new URL(decryptedUrl);
+    const defaultReferer = imageUrl.origin + "/";
+
+    const fetchHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Sec-Fetch-Dest": "image",
+      "Sec-Fetch-Mode": "no-cors",
+      "Sec-Fetch-Site": "cross-site",
+      Referer: defaultReferer,
+      ...(headers as HeadersInit),
+    };
+    console.log("[image-proxy] outgoing request:", {
+      method: "GET",
+      url: decryptedUrl,
+      headers: fetchHeaders,
+    });
+
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-        ...(headers as HeadersInit),
-      },
+      headers: fetchHeaders,
+    });
+
+    console.log("[image-proxy] response:", {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
     });
 
     if (!response.ok) {
