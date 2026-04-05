@@ -1,12 +1,6 @@
-import {
-  H3Event,
-  Duplex,
-  ProxyOptions,
-  getProxyRequestHeaders,
-  RequestHeaders,
-} from 'h3';
+import { H3Event, Duplex, ProxyOptions, getProxyRequestHeaders, RequestHeaders } from "h3";
 
-const PayloadMethods = new Set(['PATCH', 'POST', 'PUT', 'DELETE']);
+const PayloadMethods = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
 export interface ExtraProxyOptions {
   blacklistedHeaders?: string[];
@@ -49,7 +43,7 @@ export async function specificProxyRequest(
   if (PayloadMethods.has(event.method)) {
     if (opts.streamRequest) {
       body = getRequestWebStream(event);
-      duplex = 'half';
+      duplex = "half";
     } else {
       body = await readRawBody(event, false).catch(() => undefined);
     }
@@ -60,29 +54,23 @@ export async function specificProxyRequest(
 
   // netlify seems to be changing the content-encoding header to gzip when the reponse is encoded in zstd
   // so as temp fix just not sending zstd in accept encoding
-  if (oldHeaders['accept-encoding']?.includes('zstd'))
-    oldHeaders['accept-encoding'] = oldHeaders['accept-encoding']
-      .split(',')
+  if (oldHeaders["accept-encoding"]?.includes("zstd"))
+    oldHeaders["accept-encoding"] = oldHeaders["accept-encoding"]
+      .split(",")
       .map((x: string) => x.trim())
-      .filter((x: string) => x !== 'zstd')
-      .join(', ');
+      .filter((x: string) => x !== "zstd")
+      .join(", ");
 
   opts.blacklistedHeaders?.forEach((header) => {
-    const keys = Object.keys(oldHeaders).filter(
-      (v) => v.toLowerCase() === header.toLowerCase(),
-    );
+    const keys = Object.keys(oldHeaders).filter((v) => v.toLowerCase() === header.toLowerCase());
     keys.forEach((k) => delete oldHeaders[k]);
   });
 
-  const fetchHeaders = mergeHeaders(
-    oldHeaders,
-    opts.fetchOptions?.headers,
-    opts.headers,
-  );
+  const fetchHeaders = mergeHeaders(oldHeaders, opts.fetchOptions?.headers, opts.headers);
   const headerObj = Object.fromEntries([...(fetchHeaders.entries as any)()]);
-  if (process.env.REQ_DEBUG === 'true') {
+  if (process.env.REQ_DEBUG === "true") {
     console.log({
-      type: 'request',
+      type: "request",
       method,
       url: target,
       headers: headerObj,

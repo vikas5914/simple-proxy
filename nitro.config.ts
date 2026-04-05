@@ -6,9 +6,9 @@ export default defineNitroConfig({
   compatibilityDate: "2025-04-20",
   srcDir: "./src",
   runtimeConfig: {
-    version: pkg.version
+    version: pkg.version,
   },
   alias: {
-    "@": join(__dirname, "src")
-  }
+    "@": join(__dirname, "src"),
+  },
 });

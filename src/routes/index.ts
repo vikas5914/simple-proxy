@@ -1,14 +1,6 @@
-import { getBodyBuffer } from '@/utils/body';
-import {
-  getProxyHeaders,
-  getAfterResponseHeaders,
-  getBlacklistedHeaders,
-} from '@/utils/headers';
-import {
-  createTokenIfNeeded,
-  isAllowedToMakeRequest,
-  setTokenHeader,
-} from '@/utils/turnstile';
+import { getBodyBuffer } from "@/utils/body";
+import { getProxyHeaders, getAfterResponseHeaders, getBlacklistedHeaders } from "@/utils/headers";
+import { createTokenIfNeeded, isAllowedToMakeRequest, setTokenHeader } from "@/utils/turnstile";
 
 export default defineEventHandler(async (event) => {
   // Handle preflight CORS requests
@@ -21,10 +13,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // Reject any other OPTIONS requests
-  if (event.node.req.method === 'OPTIONS') {
+  if (event.node.req.method === "OPTIONS") {
     throw createError({
       statusCode: 405,
-      statusMessage: 'Method Not Allowed',
+      statusMessage: "Method Not Allowed",
     });
   }
 
@@ -35,9 +27,7 @@ export default defineEventHandler(async (event) => {
       event,
       status: 200,
       data: {
-        message: `Proxy is working as expected (v${
-          useRuntimeConfig(event).version
-        })`,
+        message: `Proxy is working as expected (v${useRuntimeConfig(event).version})`,
       },
     });
   }
@@ -48,7 +38,7 @@ export default defineEventHandler(async (event) => {
       event,
       status: 401,
       data: {
-        error: 'Invalid or missing token',
+        error: "Invalid or missing token",
       },
     });
   }
@@ -62,7 +52,7 @@ export default defineEventHandler(async (event) => {
     await specificProxyRequest(event, destination, {
       blacklistedHeaders: getBlacklistedHeaders(),
       fetchOptions: {
-        redirect: 'follow',
+        redirect: "follow",
         headers: getProxyHeaders(event.headers),
         body,
       },
@@ -73,7 +63,7 @@ export default defineEventHandler(async (event) => {
       },
     });
   } catch (e) {
-    console.log('Error fetching', e);
+    console.log("Error fetching", e);
     throw e;
   }
 });

@@ -1,30 +1,27 @@
-import { H3Event, EventHandlerRequest } from 'h3';
-import { SignJWT, jwtVerify } from 'jose';
-import { getIp } from '@/utils/ip';
+import { H3Event, EventHandlerRequest } from "h3";
+import { SignJWT, jwtVerify } from "jose";
+import { getIp } from "@/utils/ip";
 
 const turnstileSecret = process.env.TURNSTILE_SECRET ?? null;
 const jwtSecret = process.env.JWT_SECRET ?? null;
 
-const tokenHeader = 'X-Token';
-const jwtPrefix = 'jwt|';
-const turnstilePrefix = 'turnstile|';
+const tokenHeader = "X-Token";
+const jwtPrefix = "jwt|";
+const turnstilePrefix = "turnstile|";
 
 export function isTurnstileEnabled() {
   return !!turnstileSecret && !!jwtSecret;
 }
 
 export async function makeToken(ip: string) {
-  if (!jwtSecret) throw new Error('Cannot make token without a secret');
+  if (!jwtSecret) throw new Error("Cannot make token without a secret");
   return await new SignJWT({ ip })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('10m')
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("10m")
     .sign(new TextEncoder().encode(jwtSecret));
 }
 
-export function setTokenHeader(
-  event: H3Event<EventHandlerRequest>,
-  token: string,
-) {
+export function setTokenHeader(event: H3Event<EventHandlerRequest>, token: string) {
   setHeader(event, tokenHeader, token);
 }
 
@@ -40,9 +37,7 @@ export async function createTokenIfNeeded(
   return await makeToken(getIp(event));
 }
 
-export async function isAllowedToMakeRequest(
-  event: H3Event<EventHandlerRequest>,
-) {
+export async function isAllowedToMakeRequest(event: H3Event<EventHandlerRequest>) {
   if (!isTurnstileEnabled()) return true;
 
   const token = event.headers.get(tokenHeader);
@@ -57,7 +52,7 @@ export async function isAllowedToMakeRequest(
         jwtToken,
         new TextEncoder().encode(jwtSecret),
         {
-          algorithms: ['HS256'],
+          algorithms: ["HS256"],
         },
       );
       jwtPayload = jwtResult.payload;
@@ -70,17 +65,14 @@ export async function isAllowedToMakeRequest(
   if (token.startsWith(turnstilePrefix)) {
     const turnstileToken = token.slice(turnstilePrefix.length);
     const formData = new FormData();
-    formData.append('secret', turnstileSecret);
-    formData.append('response', turnstileToken);
-    formData.append('remoteip', getIp(event));
+    formData.append("secret", turnstileSecret);
+    formData.append("response", turnstileToken);
+    formData.append("remoteip", getIp(event));
 
-    const result = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        body: formData,
-        method: 'POST',
-      },
-    );
+    const result = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      body: formData,
+      method: "POST",
+    });
 
     const outcome: { success: boolean } = await result.json();
     return outcome.success;
