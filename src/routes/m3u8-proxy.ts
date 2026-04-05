@@ -1,5 +1,6 @@
 import { setResponseHeaders } from "h3";
 import { decryptUrl, encryptUrl, getSecret } from "../utils/encryption";
+import { FETCH_TIMEOUT_MS } from "../utils/constants";
 
 // Check if caching is enabled via environment variable (disabled by default)
 const isCacheDisabled = () => process.env.ENABLE_CACHE !== "true";
@@ -129,6 +130,7 @@ async function prefetchSegment(url: string, headers: HeadersInit) {
     const response = await globalThis.fetch(url, {
       method: "GET",
       headers: fetchHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     console.log("[prefetch] response:", {
@@ -265,6 +267,7 @@ async function proxyM3U8(event: any) {
 
     const response = await globalThis.fetch(decryptedUrl, {
       headers: fetchHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     console.log("[m3u8-proxy] response:", {

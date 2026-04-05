@@ -1,5 +1,6 @@
 import { sendStream, setResponseHeaders } from "h3";
 import { decryptUrl, getSecret } from "../utils/encryption";
+import { FETCH_TIMEOUT_MS } from "../utils/constants";
 
 const encryptionKey = process.env.URL_ENCRYPTION_KEY;
 
@@ -86,6 +87,7 @@ export default defineEventHandler(async (event) => {
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
       headers: fetchHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     console.log("[image-proxy] response:", {

@@ -1,6 +1,7 @@
 import { H3Event, EventHandlerRequest } from "h3";
 import { SignJWT, jwtVerify } from "jose";
 import { getIp } from "@/utils/ip";
+import { FETCH_TIMEOUT_MS } from "./constants";
 
 const turnstileSecret = process.env.TURNSTILE_SECRET ?? null;
 const jwtSecret = process.env.JWT_SECRET ?? null;
@@ -72,6 +73,7 @@ export async function isAllowedToMakeRequest(event: H3Event<EventHandlerRequest>
     const result = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       body: formData,
       method: "POST",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     const outcome: { success: boolean } = await result.json();

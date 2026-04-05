@@ -1,5 +1,6 @@
-import { setResponseHeaders } from "h3";
+import { setResponseHeaders, sendStream } from "h3";
 import { decryptUrl, getSecret } from "../utils/encryption";
+import { FETCH_TIMEOUT_MS } from "../utils/constants";
 import { getCachedSegment } from "./m3u8-proxy";
 
 // Check if caching is enabled via environment variable (disabled by default)
@@ -106,6 +107,7 @@ export default defineEventHandler(async (event) => {
     const response = await globalThis.fetch(decryptedUrl, {
       method: "GET",
       headers: fetchHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     console.log("[ts-proxy] response:", {
@@ -125,8 +127,10 @@ export default defineEventHandler(async (event) => {
       "Cache-Control": "public, max-age=3600", // Allow caching of TS segments
     });
 
-    // Return the binary data directly
-    return new Uint8Array(await response.arrayBuffer());
+    if (!response.body) {
+      throw new Error("Response body is empty");
+    }
+    return sendStream(event, response.body);
   } catch (error: any) {
     console.error("Error proxying TS file:", error);
     return sendError(

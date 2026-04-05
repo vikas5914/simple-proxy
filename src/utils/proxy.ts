@@ -1,4 +1,5 @@
 import { H3Event, Duplex, ProxyOptions, getProxyRequestHeaders, RequestHeaders } from "h3";
+import { FETCH_TIMEOUT_MS } from "./constants";
 
 const PayloadMethods = new Set(["PATCH", "POST", "PUT", "DELETE"]);
 
@@ -85,6 +86,7 @@ export async function specificProxyRequest(
       duplex,
       ...opts.fetchOptions,
       headers: fetchHeaders,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     },
   });
 }
