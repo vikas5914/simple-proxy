@@ -88,14 +88,25 @@ export default defineEventHandler(async (event) => {
     }
 
     const contentType = response.headers.get("content-type") || "image/jpeg";
+    const upstreamCacheControl = response.headers.get("cache-control");
+    const upstreamExpires = response.headers.get("expires");
 
-    setResponseHeaders(event, {
+    const responseHeaders: Record<string, string> = {
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "*",
       "Access-Control-Allow-Methods": "*",
-      "Cache-Control": "public, max-age=31536000, immutable",
-    });
+    };
+
+    if (upstreamCacheControl) {
+      responseHeaders["Cache-Control"] = upstreamCacheControl;
+    }
+
+    if (upstreamExpires) {
+      responseHeaders.Expires = upstreamExpires;
+    }
+
+    setResponseHeaders(event, responseHeaders);
 
     return sendStream(event, response.body as ReadableStream);
   } catch (error: any) {
