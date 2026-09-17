@@ -68,7 +68,7 @@ export async function specificProxyRequest(
   });
 
   const fetchHeaders = mergeHeaders(oldHeaders, opts.fetchOptions?.headers, opts.headers);
-  const headerObj = Object.fromEntries([...(fetchHeaders.entries as any)()]);
+  const headerObj = Object.fromEntries((fetchHeaders.entries as any)());
   if (process.env.REQ_DEBUG === "true") {
     console.log({
       type: "request",
