@@ -4,7 +4,7 @@ WORKDIR /app
 # Build layer
 FROM base as build
 
-RUN npm i -g pnpm
+RUN npm i -g pnpm@9
 COPY pnpm-lock.yaml package.json ./
 RUN pnpm install --frozen-lockfile
 COPY . .
