@@ -44,6 +44,38 @@ function parseURL(req_url: string, baseUrl?: string) {
   }
 }
 
+const PLAYLIST_URI_TAGS = ["#EXT-X-MEDIA:", "#EXT-X-I-FRAME-STREAM-INF:"];
+const FILE_URI_TAGS = ["#EXT-X-KEY:", "#EXT-X-SESSION-KEY:", "#EXT-X-MAP:"];
+
+// Rewrites a tag's URI="..." to go through the proxy, resolving relative URIs against the
+// playlist. Non-HTTP URIs (skd://, data:, GoodShort's local://offline-key) are left for the player.
+function proxyTagUri(
+  line: string,
+  playlistUrl: string,
+  toProxy: (url: string, route: "m3u8-proxy" | "ts-proxy") => string,
+): { line: string; fileUrl?: string } {
+  const route = PLAYLIST_URI_TAGS.some((tag) => line.startsWith(tag))
+    ? "m3u8-proxy"
+    : FILE_URI_TAGS.some((tag) => line.startsWith(tag))
+      ? "ts-proxy"
+      : null;
+  if (!route) return { line };
+
+  let fileUrl: string | undefined;
+  const rewritten = line.replace(/URI="([^"]+)"/, (match, uri: string) => {
+    let resolved: URL;
+    try {
+      resolved = new URL(uri, playlistUrl);
+    } catch {
+      return match;
+    }
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return match;
+    if (route === "ts-proxy") fileUrl = resolved.href;
+    return `URI="${toProxy(resolved.href, route)}"`;
+  });
+  return { line: rewritten, fileUrl };
+}
+
 interface CacheEntry {
   data: Uint8Array;
   headers: Record<string, string>;
@@ -256,47 +288,22 @@ async function proxyM3U8(event: any) {
     const host = getRequestHost(event);
     const proto = getRequestProtocol(event);
     const baseProxyUrl = `${proto}://${host}`;
+    const toProxy = (upstreamUrl: string, route: string) =>
+      `${baseProxyUrl}/${route}?url=${encodeURIComponent(encryptUrl(upstreamUrl, secret))}&headers=${encodedHeaders}`;
 
-    if (m3u8Content.includes("RESOLUTION=")) {
+    if (m3u8Content.includes("#EXT-X-STREAM-INF:")) {
       // This is a master playlist with multiple quality variants
       const lines = m3u8Content.split("\n");
       const newLines: string[] = [];
 
       for (const line of lines) {
         if (line.startsWith("#")) {
-          if (line.startsWith("#EXT-X-KEY:")) {
-            // Proxy the key URL
-            const regex = /https?:\/\/[^""\s]+/g;
-            const keyUrl = regex.exec(line)?.[0];
-            if (keyUrl) {
-              const encryptedKeyUrl = encodeURIComponent(encryptUrl(keyUrl, secret));
-              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
-              newLines.push(line.replace(keyUrl, proxyKeyUrl));
-            } else {
-              newLines.push(line);
-            }
-          } else if (line.startsWith("#EXT-X-MEDIA:")) {
-            // Proxy alternative media URLs (like audio streams)
-            const regex = /https?:\/\/[^""\s]+/g;
-            const mediaUrl = regex.exec(line)?.[0];
-            if (mediaUrl) {
-              const encryptedMediaUrl = encodeURIComponent(encryptUrl(mediaUrl, secret));
-              const proxyMediaUrl = `${baseProxyUrl}/m3u8-proxy?url=${encryptedMediaUrl}&headers=${encodedHeaders}`;
-              newLines.push(line.replace(mediaUrl, proxyMediaUrl));
-            } else {
-              newLines.push(line);
-            }
-          } else {
-            newLines.push(line);
-          }
+          newLines.push(proxyTagUri(line, decryptedUrl, toProxy).line);
         } else if (line.trim()) {
           // This is a quality variant URL
           const variantUrl = parseURL(line, decryptedUrl);
           if (variantUrl) {
-            const encryptedVariantUrl = encodeURIComponent(encryptUrl(variantUrl, secret));
-            newLines.push(
-              `${baseProxyUrl}/m3u8-proxy?url=${encryptedVariantUrl}&headers=${encodedHeaders}`,
-            );
+            newLines.push(toProxy(variantUrl, "m3u8-proxy"));
           } else {
             newLines.push(line);
           }
@@ -324,24 +331,10 @@ async function proxyM3U8(event: any) {
 
       for (const line of lines) {
         if (line.startsWith("#")) {
-          if (line.startsWith("#EXT-X-KEY:")) {
-            // Proxy the key URL
-            const regex = /https?:\/\/[^""\s]+/g;
-            const keyUrl = regex.exec(line)?.[0];
-            if (keyUrl) {
-              const encryptedKeyUrl = encodeURIComponent(encryptUrl(keyUrl, secret));
-              const proxyKeyUrl = `${baseProxyUrl}/ts-proxy?url=${encryptedKeyUrl}&headers=${encodedHeaders}`;
-              newLines.push(line.replace(keyUrl, proxyKeyUrl));
-
-              // Only prefetch if cache is enabled
-              if (!isCacheDisabled()) {
-                prefetchSegment(keyUrl, headers as HeadersInit);
-              }
-            } else {
-              newLines.push(line);
-            }
-          } else {
-            newLines.push(line);
+          const tag = proxyTagUri(line, decryptedUrl, toProxy);
+          newLines.push(tag.line);
+          if (tag.fileUrl && !isCacheDisabled()) {
+            prefetchSegment(tag.fileUrl, headers as HeadersInit);
           }
         } else if (line.trim() && !line.startsWith("#")) {
           // This is a segment URL (.ts file)
@@ -349,10 +342,7 @@ async function proxyM3U8(event: any) {
           if (segmentUrl) {
             segmentUrls.push(segmentUrl);
 
-            const encryptedSegmentUrl = encodeURIComponent(encryptUrl(segmentUrl, secret));
-            newLines.push(
-              `${baseProxyUrl}/ts-proxy?url=${encryptedSegmentUrl}&headers=${encodedHeaders}`,
-            );
+            newLines.push(toProxy(segmentUrl, "ts-proxy"));
           } else {
             newLines.push(line);
           }
