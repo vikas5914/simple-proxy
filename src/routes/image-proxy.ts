@@ -4,6 +4,16 @@ import { FETCH_TIMEOUT_MS } from "../utils/constants";
 
 const encryptionKey = process.env.URL_ENCRYPTION_KEY;
 
+// Image CDNs answer hotlink blocks and expired signatures with a 4xx that will not change on a
+// retry. Passing that status on with a short TTL lets Cloudflare answer the repeats.
+const UPSTREAM_REFUSAL_TTL_SECONDS = 600;
+
+class UpstreamRefusal extends Error {
+  constructor(readonly status: number) {
+    super(`Failed to fetch image: ${status}`);
+  }
+}
+
 export default defineEventHandler(async (event) => {
   // Handle CORS preflight requests
   if (isPreflightRequest(event)) return handleCors(event, {});
@@ -84,6 +94,10 @@ export default defineEventHandler(async (event) => {
     });
 
     if (!response.ok) {
+      await response.body?.cancel();
+      if (response.status >= 400 && response.status < 500) {
+        throw new UpstreamRefusal(response.status);
+      }
       throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
     }
 
@@ -111,6 +125,16 @@ export default defineEventHandler(async (event) => {
     return sendStream(event, response.body as ReadableStream);
   } catch (error: any) {
     console.error(`[image-proxy] FAIL ${decryptedUrl || url}`, error.message);
+    if (error instanceof UpstreamRefusal) {
+      setResponseHeaders(event, {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": `public, max-age=${UPSTREAM_REFUSAL_TTL_SECONDS}`,
+      });
+      return sendError(
+        event,
+        createError({ statusCode: error.status, statusMessage: error.message }),
+      );
+    }
     return sendError(
       event,
       createError({
