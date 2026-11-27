@@ -1,6 +1,7 @@
 import { getBodyBuffer } from "@/utils/body";
 import { getProxyHeaders, getAfterResponseHeaders, getBlacklistedHeaders } from "@/utils/headers";
 import { createTokenIfNeeded, isAllowedToMakeRequest, setTokenHeader } from "@/utils/turnstile";
+import { hasProxyKey } from "@/utils/proxy-key";
 
 export default defineEventHandler(async (event) => {
   // Handle preflight CORS requests
@@ -30,6 +31,12 @@ export default defineEventHandler(async (event) => {
         message: `Proxy is working as expected (v${useRuntimeConfig(event).version})`,
       },
     });
+  }
+
+  // `destination` is a plain URL, so without a key anyone could fetch any site through the VM.
+  // Only flux-v2's server sends the key. Cloudflare also blocks keyless requests before its cache.
+  if (!hasProxyKey(event)) {
+    return await sendJson({ event, status: 401, data: { error: "Invalid or missing proxy key" } });
   }
 
   // Check if allowed to make the request

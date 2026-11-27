@@ -7,3 +7,4 @@ services:
       - "3000:3000"
     environment:
       URL_ENCRYPTION_KEY: ${URL_ENCRYPTION_KEY}
+      PROXY_KEY: ${PROXY_KEY}
