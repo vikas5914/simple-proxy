@@ -1,6 +1,7 @@
 import { setResponseHeaders, sendStream } from "h3";
 import { decryptUrl, getSecret } from "../utils/encryption";
 import { FETCH_TIMEOUT_MS } from "../utils/constants";
+import { isPromoRedirect } from "../utils/promo";
 import { getCachedSegment } from "./m3u8-proxy";
 
 // Check if caching is enabled via environment variable (disabled by default)
@@ -158,6 +159,14 @@ export default defineEventHandler(async (event) => {
 
     if (!response.ok && response.status !== 416) {
       throw new Error(`Failed to fetch TS file: ${response.status} ${response.statusText}`);
+    }
+    if (isPromoRedirect(response)) {
+      await response.body?.cancel();
+      console.error(`[ts-proxy] FAIL promo redirect ${decryptedUrl} -> ${response.url}`);
+      return sendError(
+        event,
+        createError({ statusCode: 502, statusMessage: "Upstream redirected to a promo clip" }),
+      );
     }
 
     // Some segment hosts disguise TS as images, so only trust a real media type (e.g. MP4).

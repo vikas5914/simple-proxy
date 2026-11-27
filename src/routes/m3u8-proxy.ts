@@ -1,6 +1,7 @@
 import { setResponseHeaders } from "h3";
 import { decryptUrl, encryptUrl, getSecret } from "../utils/encryption";
 import { FETCH_TIMEOUT_MS } from "../utils/constants";
+import { isPromoRedirect } from "../utils/promo";
 
 // Check if caching is enabled via environment variable (disabled by default)
 const isCacheDisabled = () => process.env.ENABLE_CACHE !== "true";
@@ -155,8 +156,9 @@ async function prefetchSegment(url: string, headers: HeadersInit) {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
-    if (!response.ok) {
-      console.error(`[prefetch] FAIL ${response.status} ${url}`);
+    if (!response.ok || isPromoRedirect(response)) {
+      await response.body?.cancel();
+      console.error(`[prefetch] FAIL ${response.status} ${response.url || url}`);
       return;
     }
 
@@ -280,6 +282,10 @@ async function proxyM3U8(event: any) {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch M3U8: ${response.status} ${response.statusText}`);
+    }
+    if (isPromoRedirect(response)) {
+      await response.body?.cancel();
+      throw new Error(`Upstream redirected to a promo clip: ${response.url}`);
     }
 
     const m3u8Content = await response.text();
