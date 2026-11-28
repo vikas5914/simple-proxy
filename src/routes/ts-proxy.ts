@@ -23,9 +23,12 @@ function joinCappedRanges(
   first: Response,
   firstEnd: number,
   total: number,
+  chunkBytes: number | null,
 ): ReadableStream<Uint8Array> {
   const headers = new Headers(fetchHeaders);
   let next = firstEnd + 1;
+  const rangeFrom = (start: number) =>
+    chunkBytes ? `bytes=${start}-${Math.min(start + chunkBytes, total) - 1}` : `bytes=${start}-`;
   let reader = first.body!.getReader();
   return new ReadableStream({
     async pull(controller) {
@@ -39,14 +42,14 @@ function joinCappedRanges(
           controller.close();
           return;
         }
-        headers.set("Range", `bytes=${next}-`);
+        headers.set("Range", rangeFrom(next));
         const res = await globalThis.fetch(url, {
           headers,
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
         const part = parseContentRange(res.headers.get("content-range"));
         if (res.status !== 206 || !res.body || part?.start !== next || part.total !== total) {
-          throw new Error(`Bad range from upstream: ${res.status} for bytes=${next}-`);
+          throw new Error(`Bad range from upstream: ${res.status} for ${rangeFrom(next)}`);
         }
         next = part.end + 1;
         reader = res.body.getReader();
@@ -56,6 +59,24 @@ function joinCappedRanges(
       return reader.cancel(reason);
     },
   });
+}
+
+// googlevideo throttles an open-ended request for most of a file (no Range, `bytes=0-`,
+// `bytes=2097152-` of 14 MB) to below real-time speed, but sends bounded ranges at full speed.
+const CHUNKED_HOSTS = ["googlevideo.com"];
+const CHUNK_BYTES = 4 * 1024 * 1024;
+
+function chunkBytesFor(url: string): number | null {
+  const host = new URL(url).hostname;
+  return CHUNKED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? CHUNK_BYTES : null;
+}
+
+// Open-ended ranges become one bounded chunk; the player asks for the next one itself.
+function upstreamRange(range: string | undefined, chunkBytes: number | null): string | undefined {
+  if (!chunkBytes) return range;
+  if (!range) return `bytes=0-${chunkBytes - 1}`;
+  const start = /^bytes=(\d+)-$/.exec(range.trim())?.[1];
+  return start ? `bytes=${start}-${Number(start) + chunkBytes - 1}` : range;
 }
 
 export default defineEventHandler(async (event) => {
@@ -143,10 +164,12 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    const chunkBytes = chunkBytesFor(decryptedUrl);
+    const sentRange = upstreamRange(range, chunkBytes);
     const fetchHeaders = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-      ...(range ? { Range: range } : {}),
+      ...(sentRange ? { Range: sentRange } : {}),
       ...(headers as HeadersInit),
     };
     console.log(`[ts-proxy] GET ${decryptedUrl}${range ? ` ${range}` : ""}`);
@@ -185,14 +208,21 @@ export default defineEventHandler(async (event) => {
     }
 
     const capped = parseContentRange(response.headers.get("content-range"));
-    if (!range && response.status === 206 && capped?.start === 0 && capped.end + 1 < capped.total) {
+    if (!range && response.status === 206 && capped?.start === 0) {
       setResponseHeaders(event, {
         "Accept-Ranges": "bytes",
         "Content-Length": String(capped.total),
       });
       return sendStream(
         event,
-        joinCappedRanges(decryptedUrl, fetchHeaders, response, capped.end, capped.total),
+        joinCappedRanges(
+          decryptedUrl,
+          fetchHeaders,
+          response,
+          capped.end,
+          capped.total,
+          chunkBytes,
+        ),
       );
     }
 
